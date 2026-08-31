@@ -49,33 +49,63 @@ window.hosts_alarms = {
 
 - `payload.conf`: parsed JSON from `conf_json`
 - `payload.context`: runtime metadata (for example `widgetid`, `rf_rate`)
-- `payload.zbx`: reserved host API object
+- `payload.zbx`: the wrapper's host API - `capabilities`, and `api(method, params)` used
+  by the session access mode (see "Access Modes" below)
+
+## Access Modes
+
+The widget reaches the Zabbix API one of two ways, selected by the `api` key:
+
+- `"auto"` (default): the wrapper's session-authenticated gate (`zbx.api`, js_wrapper 1.1+)
+  when offered, the token otherwise. **Session mode acts as the logged-in user** - each
+  viewer sees exactly the hosts and problems their own permissions allow, and no secret
+  sits in the widget configuration.
+- `"session"`: the gate only; an older wrapper is reported as an error.
+- `"token"`: the token only - one shared identity for everyone who sees the dashboard
+  (a NOC wallboard). The token is readable by every dashboard viewer, so scope it.
+
+The trust-model comparison and the module integration pattern live in "Host API" of the
+`js_wrapper` README. All four API calls this widget makes are reads, covered by the
+gate's default allowlist.
 
 ## Configuration (`conf_json`)
 
-The module currently expects these keys in `payload.conf`:
+| Key         | Default           | Description                                                              |
+| ----------- | ----------------- | ------------------------------------------------------------------------ |
+| `api`       | `auto`            | Access mode: `auto` \| `session` \| `token` - see above                  |
+| `apikey`    | -                 | Zabbix API token. Required for the token mode; ignored by the session mode |
+| `apiurl`    | `api_jsonrpc.php` | JSON-RPC endpoint of the token mode; the relative default resolves against the frontend |
+| `hostgroup` | all               | Optional scope: a host group name or numeric id. Without it, every host the current identity may read is shown - under the session mode that is the user's own scope |
 
-- `apiurl` - URL to `api_jsonrpc.php`
-- `apikey` - Zabbix API token (Bearer)
-- `hostgroup` - host group name used for loading hosts/problems
-
-Example:
+Example (session mode - the whole configuration):
 
 ```json
 {
-  "apiurl": "https://zabbix.example.com/zabbix/api_jsonrpc.php",
+  "api": "session",
+  "hostgroup": "Linux servers"
+}
+```
+
+Example (token mode):
+
+```json
+{
   "apikey": "<ZABBIX_API_TOKEN>",
   "hostgroup": "Linux servers"
 }
 ```
 
+A configured group that does not exist (or that the current identity may not see) is
+reported as an error rather than rendered as an empty heatmap.
+
 ## Data Loading Flow
 
 `Helper.getLiveAlarms(hostgroup)` calls the API in this order:
 
-1. `hostgroup.get` - resolve host group name to `groupid`
-2. `host.get` - load hosts in that group
-3. `problem.get` - load active problems for the group
+1. `hostgroup.get` - resolve a host group name to `groupid` (skipped for a numeric id,
+   or with no `hostgroup` at all)
+2. `host.get` - load the hosts in scope
+3. `problem.get` - load active problems for the same scope
 4. `event.get(selectHosts)` - map events to hosts
 
 The resulting data shape:
@@ -95,11 +125,18 @@ The resulting data shape:
 - `src/entry.js` - registers `window.hosts_alarms` + `mount/destroy/update`
 - `src/App.vue` - ECharts heatmap rendering + interactions
 - `src/services/Helper.js` - data transformation, layout utilities, API workflow
-- `src/services/ZbxApi.js` - lightweight Zabbix JSON-RPC client
+- `src/services/ZbxApi.js` - the two transports (token / session gate), their selection
+  (`makeTransport`), and a lightweight Zabbix API client over them
 - `vite.lib.config.js` - UMD library build configuration
 
 ## Important Notes
 
-- The module requires a valid Zabbix API token with permission to read hosts/problems.
-- `src/main.js` is a demo file; do not commit real production tokens.
-- `update(payload)` supports refresh without remount and triggers re-rendering on configuration changes.
+- Reading hosts and problems requires the corresponding permissions: the logged-in
+  user's own in the session mode, the token user's in the token mode.
+- `src/main.js` is a demo file; do not commit real production tokens. Local development
+  has no wrapper, so it always runs in the token mode (through the Vite `/zbx-api` proxy).
+- `update(payload)` supports refresh without remount and triggers re-rendering on
+  configuration changes.
+- `vite.lib.config.js` replaces `process.env.NODE_ENV` at build time. This is required,
+  not an optimisation: `js_wrapper` 1.1 ships no process shim, so a build without the
+  top-level `define` fails in Zabbix with `ReferenceError: process is not defined`.

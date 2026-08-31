@@ -69,15 +69,24 @@ cp dist/hosts_alarms.css ../js_wrapper/assets/umd/hosts_alarms.css
 Then in Zabbix widget configuration set:
 
 - `component`: `hosts_alarms`
-- `conf_json`: valid JSON (must include `apiurl`, `apikey`, and `hostgroup` for this module)
+- `conf_json`: valid JSON. Under js_wrapper 1.1+ the session mode needs no token; the
+  token mode needs `apikey` - see "Access Modes" in `README.md`
 
-Example `conf_json`:
+Example `conf_json` (session mode):
 
 ```json
 {
-    "apiurl": "https://zabbix.example.com/zabbix/api_jsonrpc.php",
-    "apikey": "18d34d41de32ac6874c3936efba35ee259dbaf424deb33de316dd7760e4536b5",
-    "hostgroup": "test"
+    "api": "session",
+    "hostgroup": "Linux servers"
+}
+```
+
+Example `conf_json` (token mode):
+
+```json
+{
+    "apikey": "<ZABBIX_API_TOKEN>",
+    "hostgroup": "Linux servers"
 }
 ```
 
@@ -99,5 +108,9 @@ npm run format
 - If the widget does not load in Zabbix, verify both files exist in `js_wrapper/assets/umd/`.
 - If global API is not found, check that `src/entry.js` publishes `window.hosts_alarms`.
 - If UI renders in local dev but not in Zabbix, re-check wrapper `component` value and artifact file names.
-- If no data is shown, verify `conf_json` values and API token permissions.
+- If no data is shown, verify `conf_json` values and the permissions of the identity in
+  use (the logged-in user in the session mode, the token user in the token mode); the
+  browser console carries the API error.
+- If the script fails with `ReferenceError: process is not defined`, the build predates
+  the top-level `define` in `vite.lib.config.js` - rebuild.
 

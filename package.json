@@ -1,5 +1,5 @@
 {
-  "name": "zbx-vue-widget-hosts-status",
+  "name": "zbx-vue-widget-hosts-alarms",
   "version": "0.0.0",
   "private": true,
   "type": "module",

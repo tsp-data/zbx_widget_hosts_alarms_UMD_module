@@ -1,10 +1,11 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, inject } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import * as echarts from 'echarts/core'
 import { HeatmapChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { Helper } from './services/Helper.js'
+import { ZbxApiClient, makeTransport } from './services/ZbxApi.js'
 
 echarts.use([HeatmapChart, GridComponent, TooltipComponent, VisualMapComponent, CanvasRenderer])
 
@@ -20,10 +21,40 @@ const props = defineProps({
   zbx: { type: null, required: false },
 })
 
+/*
+ * Effective configuration and host API: prefer the reactive state the wrapper
+ * updates on every refresh cycle, fall back to the mount-time props (standalone
+ * dev mode). Reading props directly after mount would freeze the configuration
+ * as it was at mount - conf_json changes would never reach the API client.
+ */
+const conf = computed(() => {
+  const fromState = state?.conf
+  if (fromState && Object.keys(fromState).length > 0) return fromState
+  return props.conf ?? {}
+})
+
+const zbxHost = computed(() => state?.zbx ?? props.zbx ?? {})
+
 const chartEl = ref(null)
 const hosts = ref([])
 let chart = null
-const helper = ref(null)
+
+/**
+ * Load hosts + problems over whichever transport the configuration selects
+ * (`conf.api`: the wrapper's session gate, or a token - see ZbxApi.js). The client
+ * is built per load, so configuration changes from update cycles always apply.
+ */
+async function load() {
+  const c = conf.value
+
+  try {
+    const client = new ZbxApiClient(makeTransport(c, zbxHost.value))
+    hosts.value = await new Helper(client).getLiveAlarms(c.hostgroup)
+  } catch (err) {
+    hosts.value = []
+    console.error(`[hosts_alarms] getLiveAlarms("${c.hostgroup ?? ''}") failed:`, err)
+  }
+}
 
 function buildOption(hosts) {
   const width = chart.getWidth()
@@ -171,14 +202,7 @@ onMounted(async () => {
   // Create ECharts instance after Vue template is mounted into DOM.
   chart = echarts.init(chartEl.value)
 
-  helper.value = new Helper({ apiUrl: props.conf?.apiurl, apiToken: props.conf?.apikey })
-  const hostgroup = props.conf?.hostgroup || 'test'
-  try {
-    hosts.value = await helper.value.getLiveAlarms(hostgroup)
-  } catch (err) {
-    hosts.value = []
-    console.error(`getLiveAlarms("${hostgroup}") failed:`, err)
-  }
+  await load()
 
   // Perform first draw and register interactions.
   resize()
@@ -196,20 +220,11 @@ onBeforeUnmount(() => {
   }
 })
 
-// Re-render on update() from wrapper.
+// Reload and re-render on update() from wrapper.
 watch(
   () => state.conf,
   async () => {
-    if (!helper.value) return
-    const hostgroup = props.conf?.hostgroup
-
-    try {
-      hosts.value = await helper.value.getLiveAlarms(hostgroup)
-    } catch (err) {
-      hosts.value = []
-      console.error(`getLiveAlarms("${hostgroup}") failed:`, err)
-    }
-
+    await load()
     render()
   },
   { deep: true },

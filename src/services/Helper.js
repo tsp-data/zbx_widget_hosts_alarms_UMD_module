@@ -1,15 +1,17 @@
-import { ZbxApiClient } from './ZbxApi.js';
+import { ZbxApiError } from './ZbxApi.js';
 
 /**
  * Helper class with utility methods for data and text manipulation.
  */
 export class Helper {
   /**
-   * @param {{ apiUrl?: string, apiToken?: string }} [opts]
+   * @param {import('./ZbxApi.js').ZbxApiClient} [client]
+   *   API client over whichever transport the configuration selected (token or the
+   *   wrapper's session gate) - see makeTransport in ZbxApi.js. Only needed for
+   *   getLiveAlarms(); the static presentation helpers work without one.
    */
-  constructor(opts) {
-    this.apiUrl = opts?.apiUrl;
-    this.apiToken = opts?.apiToken;
+  constructor(client) {
+    this.client = client;
   }
 
   /**
@@ -79,36 +81,57 @@ export class Helper {
     };
   }
 
+  /**
+   * Load hosts and their active problems.
+   *
+   * @param {string} [hostgroup] Optional scope: a host group name or numeric id.
+   *   Without it every host the current identity may read is loaded - under the
+   *   wrapper's session transport that is the logged-in user's own permission
+   *   scope, which usually needs no further narrowing.
+   */
   async getLiveAlarms(hostgroup) {
-    if (!hostgroup || hostgroup.trim() === '') {
-      return [];
+    if (!this.client) {
+      throw new ZbxApiError('Helper.getLiveAlarms: no API client - pass one to the constructor');
     }
 
-    if (!this.apiToken || this.apiToken.trim() === '') {
-      throw new Error('Helper.getLiveAlarms: missing apiToken in Helper constructor options');
+    const zbx = this.client;
+    const entry = (hostgroup ?? '').trim();
+
+    /** @type {string[] | undefined} */
+    let groupIds;
+
+    if (entry !== '') {
+      // A numeric value is taken as an id directly and saves the lookup.
+      if (/^\d+$/.test(entry)) {
+        groupIds = [entry];
+      } else {
+        /** @type {Array<{ groupid: string }>} */
+        // 1) Resolve host group name -> groupid(s).
+        const groups = await zbx.call('hostgroup.get', {
+          filter: { name: [entry] },
+          output: ['groupid', 'name'],
+        });
+
+        // A configured group that does not exist must not degrade into an empty
+        // heatmap - a typo would look like "no hosts" instead of being fixable.
+        if (groups.length === 0) {
+          throw new ZbxApiError(
+            `Host group "${entry}" does not exist (or you have no permission to it).`,
+          );
+        }
+
+        groupIds = groups.map((g) => String(g.groupid));
+      }
     }
 
-    // Keep client local per call: tiny overhead, but no shared mutable state.
-    const zbx = new ZbxApiClient(this.apiUrl, this.apiToken);
-
-    /** @type {Array<{ groupid: string }>} */
-    // 1) Resolve host group name -> groupid(s)
-    const groups = await zbx.call('hostgroup.get', {
-      filter: { name: [hostgroup] },
-      output: ['groupid', 'name'],
-    });
-
-    if (groups.length === 0) {
-      return [];
-    }
-
-    const groupIds = groups.map((g) => String(g.groupid));
+    const scope = groupIds ? { groupids: groupIds } : {};
 
     /** @type {Array<{ hostid: string, host?: string, name?: string }>} */
-    // 2) Load all hosts in the requested group.
-    // We initialize result map with empty alarm arrays so hosts without problems are preserved.
+    // 2) Load the hosts in scope - the group's, or everything the current identity
+    // may read. We initialize the result map with empty alarm arrays so hosts
+    // without problems are preserved.
     const hosts = await zbx.call('host.get', {
-      groupids: groupIds,
+      ...scope,
       output: ['hostid', 'host', 'name'],
     });
 
@@ -124,10 +147,10 @@ export class Helper {
     });
 
     /** @type {Array<{ eventid: string, name?: string, severity?: string | number }>} */
-    // 3) Load active problems for the group.
+    // 3) Load active problems for the same scope.
     // problem.get gives eventid + problem payload, but host linkage is not directly included.
     const problems = await zbx.call('problem.get', {
-      groupids: groupIds,
+      ...scope,
       output: ['eventid', 'name', 'severity', 'clock', 'acknowledged'],
     });
 

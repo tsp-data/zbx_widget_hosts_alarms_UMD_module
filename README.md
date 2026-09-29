@@ -140,3 +140,7 @@ The resulting data shape:
 - `vite.lib.config.js` replaces `process.env.NODE_ENV` at build time. This is required,
   not an optimisation: `js_wrapper` 1.1 ships no process shim, so a build without the
   top-level `define` fails in Zabbix with `ReferenceError: process is not defined`.
+
+## License
+
+MIT - see `LICENSE`. Copyright (c) 2026 TSP Data a.s.

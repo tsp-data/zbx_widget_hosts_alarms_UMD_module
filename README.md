@@ -144,3 +144,18 @@ The resulting data shape:
 ## License
 
 MIT - see `LICENSE`. Copyright (c) 2026 TSP Data a.s.
+
+The UMD build bundles third-party libraries under their own permissive licenses:
+[Vue](https://github.com/vuejs/core) (MIT), [Apache ECharts](https://github.com/apache/echarts)
+(Apache-2.0) and its dependencies [ZRender](https://github.com/ecomfe/zrender) (BSD-3-Clause)
+and [tslib](https://github.com/microsoft/tslib) (0BSD). Their copyright notices are in the
+packages' own `LICENSE` files (see `node_modules/` after `npm install`). The `NOTICE` file of
+Apache ECharts reads:
+
+```text
+Apache ECharts
+Copyright 2017-2025 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+```

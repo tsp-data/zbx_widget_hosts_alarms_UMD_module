@@ -4,7 +4,25 @@ This directory contains a frontend widget module in UMD format, intended to be h
 
 The module renders an overview of hosts and their active problems as an ECharts heatmap (tile = host, color = highest severity).
 
-For build, local development, and deployment steps, see `BUILD.md`.
+## Installation
+
+No build is needed to use the module: every
+[release](https://github.com/tsp-data/zbx_widget_hosts_alarms_UMD_module/releases) ships the two
+prebuilt files `hosts_alarms.umd.js` and `hosts_alarms.css`, plus a zip of both and SHA-256 checksums.
+
+1. Install and enable the
+   [TSP_zabbix_widget_js_wrapper](https://github.com/tsp-data/TSP_zabbix_widget_js_wrapper) module in
+   the Zabbix frontend. The session access mode needs js_wrapper 1.1 or newer; the token mode works
+   with any version.
+2. Download `hosts_alarms.umd.js` and `hosts_alarms.css` from the latest release and copy them into
+   `modules/js_wrapper/assets/umd/` of the frontend (`/usr/share/zabbix/modules/js_wrapper/assets/umd/`
+   for the Zabbix 7.0 RPM/DEB packages). Use a plain copy, not `cp -p` or `rsync -a`: the wrapper uses
+   the file modification time for cache busting.
+3. Add a `JS wrapper` widget to a dashboard, set `component` to `hosts_alarms` and `conf_json` as
+   described under "Access Modes" and "Configuration" below.
+
+Building from source, local development and a modified module are described in `BUILD.md`;
+versions are listed in `CHANGELOG.md`.
 
 ## What the Module Does
 
